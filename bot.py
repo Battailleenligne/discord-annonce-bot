@@ -4,7 +4,7 @@ from discord.ext import commands
 import os
 # Le token est stocké dans une variable d'environnement sur Render
 TOKEN = os.environ['DISCORD_TOKEN']
-GUILD_ID = 123456789012345678  # Remplace par l'ID de ton serveur pour test
+GUILD_ID = 1404025528280682516  # Remplace par l'ID de ton serveur pour test
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -80,4 +80,5 @@ async def on_ready():
     print(f"Connecté en tant que {bot.user}")
 
 bot.run(TOKEN)
+
 
