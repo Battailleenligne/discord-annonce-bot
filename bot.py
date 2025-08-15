@@ -1,7 +1,6 @@
 import os
 import discord
 from discord.ext import commands
-from discord.utils import get
 from flask import Flask
 from threading import Thread
 
@@ -65,7 +64,6 @@ async def create_game_channel(message):
 async def on_reaction_add(reaction, user):
     if user.bot:
         return
-
     if reaction.emoji != "🎲":
         return
 
@@ -83,15 +81,9 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if "Fiche de Recherche de Partie" in message.content:
+    # Vérifie exactement la phrase "Fiche de Recherche de Partie"
+    if message.content.startswith("Fiche de Recherche de Partie"):
         await create_game_channel(message)
-    else:
-        # Message d’instruction
-        if message.channel.type == discord.ChannelType.text:
-            await message.channel.send(
-                f"{message.author.mention}, pour que le salon privé se crée, "
-                "veuillez copier-coller la **Fiche de Recherche de Partie** exactement comme indiqué."
-            )
 
     await bot.process_commands(message)
 
