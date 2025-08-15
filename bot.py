@@ -1,83 +1,62 @@
 import discord
 from discord.ext import commands
+import os
 
-# =========================
-# CONFIGURATION
-# =========================
-ANNONCE_CHANNEL_ID = 1404546569667346444  # Remplace par l’ID du canal annonces
-REACTION_EMOJI = "🎲"  # Emoji pour rejoindre la partie
-TOKEN = "MTQwNDU3MzIzOTYwMjE4ODM5OQ.GzsRO-.C0qTxC_YnNqeSSNIH2ir-qeSKDFbNaavKP0Ku4"  # Remplace par ton nouveau token
-
-# =========================
-# INTENTS (autorisations)
-# =========================
+# Activer les intents nécessaires
 intents = discord.Intents.default()
-intents.messages = True
-intents.message_content = True  # Lecture du contenu des messages
-intents.guilds = True
-intents.members = True  # Voir la liste des membres
+intents.message_content = True
+intents.members = True  # Pour gérer les permissions et salons privés
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-
-# =========================
-# ÉVÉNEMENTS
-# =========================
+# Quand le bot est prêt
 @bot.event
 async def on_ready():
-    print(f"✅ Connecté en tant que {bot.user}")
+    print(f"✅ Bot connecté en tant que {bot.user}")
 
-
+# Détecter les messages avec le format de recherche de partie
 @bot.event
-async def on_message(message):
+async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    # Vérifie que le message est dans le canal d'annonces et contient la fiche
-    if message.channel.id == ANNONCE_CHANNEL_ID and "Fiche de Recherche de Partie" in message.content:
-        await create_game_channel(message)
-        await message.add_reaction(REACTION_EMOJI)
+    # Vérifier si le message commence bien par "Fiche de Recherche de Partie"
+    if message.content.startswith("Fiche de Recherche de Partie"):
+        guild = message.guild
+
+        # Créer un salon privé
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            message.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+
+        channel_name = f"partie-de-{message.author.name}".lower()
+        channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
+
+        await channel.send(f"{message.author.mention}, votre canal de partie est prêt ! 🎯\n"
+                           "Les joueurs pourront le rejoindre en réagissant avec 🎲 à ce message.")
+
+        # Ajouter une réaction pour que les autres puissent rejoindre
+        sent_message = await channel.send("Réagissez avec 🎲 pour rejoindre cette partie.")
+        await sent_message.add_reaction("🎲")
 
     await bot.process_commands(message)
 
-
-async def create_game_channel(message):
-    guild = message.guild
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        message.author: discord.PermissionOverwrite(read_messages=True),
-        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)  # ⬅ Le bot peut écrire
-    }
-    channel_name = f"partie-de-{message.author.name}".replace(" ", "-").lower()
-
-    # Crée le canal privé
-    channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
-    await channel.send(f"{message.author.mention}, votre canal de partie est prêt ! 🎯")
-
-
+# Gestion des réactions pour donner accès
 @bot.event
-async def on_raw_reaction_add(payload):
-    # Ignore les réactions du bot
-    if payload.user_id == bot.user.id:
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    if payload.emoji.name != "🎲":
         return
 
     guild = bot.get_guild(payload.guild_id)
+    channel = guild.get_channel(payload.channel_id)
     member = guild.get_member(payload.user_id)
 
-    # Récupère le message d'origine
-    channel = guild.get_channel(payload.channel_id)
-    message = await channel.fetch_message(payload.message_id)
+    if member is None or member.bot:
+        return
 
-    # Vérifie que c'est une fiche et que c'est le bon emoji
-    if "Fiche de Recherche de Partie" in message.content and str(payload.emoji) == REACTION_EMOJI:
-        channel_name = f"partie-de-{message.author.name}".replace(" ", "-").lower()
-        private_channel = discord.utils.get(guild.channels, name=channel_name)
-        if private_channel:
-            await private_channel.set_permissions(member, read_messages=True)
-            await private_channel.send(f"{member.mention} a rejoint la partie ! 🚀")
+    await channel.set_permissions(member, read_messages=True, send_messages=True)
+    await channel.send(f"{member.mention} a rejoint la partie 🎉")
 
-
-# =========================
-# LANCEMENT DU BOT
-# =========================
-bot.run(TOKEN)
+# Lancer le bot avec le token stocké dans Render
+bot.run(os.environ['TOKEN'])
