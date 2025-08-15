@@ -39,33 +39,41 @@ async def on_ready():
 async def create_game_channel(message):
     guild = message.guild
     author = message.author
-    # Nom du canal : Partie-username
     channel_name = f"partie-{author.name}"
-    
+
+    # Vérifie si un canal existe déjà pour cet utilisateur
+    existing_channel = discord.utils.get(guild.channels, name=channel_name)
+    if existing_channel:
+        await message.channel.send(f"{author.mention}, vous avez déjà un canal de partie !")
+        return
+
     # Crée le canal texte privé
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         author: discord.PermissionOverwrite(read_messages=True)
     }
-    
+
     channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
     game_channels[channel.id] = author.id
     await channel.send(f"{author.mention}, votre canal de partie est prêt ! 🎯")
-    
+
     # Invite les joueurs via réaction
-    await message.add_reaction("🎲")  # Les joueurs réagissent avec cet émoji
+    await message.add_reaction("🎲")
 
 # --- Sur réaction ajoutée pour donner accès au canal ---
 @bot.event
 async def on_reaction_add(reaction, user):
     if user.bot:
         return
+
+    if reaction.emoji != "🎲":
+        return
+
     message = reaction.message
-    if reaction.emoji == "🎲":
-        # Vérifie si le message correspond à un canal de partie
-        for channel_id, owner_id in game_channels.items():
-            if message.channel.id == message.channel.id:  # Le message original
-                channel = bot.get_channel(channel_id)
+    for channel_id, owner_id in game_channels.items():
+        if message.channel.id == message.channel.id:  # Message original
+            channel = bot.get_channel(channel_id)
+            if channel:
                 await channel.set_permissions(user, read_messages=True)
                 await channel.send(f"{user.mention} a rejoint la partie ! 🎮")
 
@@ -74,8 +82,17 @@ async def on_reaction_add(reaction, user):
 async def on_message(message):
     if message.author.bot:
         return
+
     if "Fiche de Recherche de Partie" in message.content:
         await create_game_channel(message)
+    else:
+        # Message d’instruction
+        if message.channel.type == discord.ChannelType.text:
+            await message.channel.send(
+                f"{message.author.mention}, pour que le salon privé se crée, "
+                "veuillez copier-coller la **Fiche de Recherche de Partie** exactement comme indiqué."
+            )
+
     await bot.process_commands(message)
 
 # --- Commande ping pour tester ---
