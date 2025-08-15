@@ -1,62 +1,88 @@
+import os
 import discord
 from discord.ext import commands
-import os
+from discord.utils import get
+from flask import Flask
+from threading import Thread
 
-# Activer les intents nécessaires
+# --- Serveur web pour Render + UptimeRobot ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# --- Intents Discord ---
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True  # Pour gérer les permissions et salons privés
+intents.members = True
+intents.reactions = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Quand le bot est prêt
+# --- Dictionnaire pour stocker les canaux de partie ---
+game_channels = {}
+
+# --- Quand le bot est prêt ---
 @bot.event
 async def on_ready():
-    print(f"✅ Bot connecté en tant que {bot.user}")
+    print(f"✅ Connecté en tant que {bot.user}")
 
-# Détecter les messages avec le format de recherche de partie
+# --- Fonction pour créer le canal de partie ---
+async def create_game_channel(message):
+    guild = message.guild
+    author = message.author
+    # Nom du canal : Partie-username
+    channel_name = f"partie-{author.name}"
+    
+    # Crée le canal texte privé
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        author: discord.PermissionOverwrite(read_messages=True)
+    }
+    
+    channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
+    game_channels[channel.id] = author.id
+    await channel.send(f"{author.mention}, votre canal de partie est prêt ! 🎯")
+    
+    # Invite les joueurs via réaction
+    await message.add_reaction("🎲")  # Les joueurs réagissent avec cet émoji
+
+# --- Sur réaction ajoutée pour donner accès au canal ---
 @bot.event
-async def on_message(message: discord.Message):
+async def on_reaction_add(reaction, user):
+    if user.bot:
+        return
+    message = reaction.message
+    if reaction.emoji == "🎲":
+        # Vérifie si le message correspond à un canal de partie
+        for channel_id, owner_id in game_channels.items():
+            if message.channel.id == message.channel.id:  # Le message original
+                channel = bot.get_channel(channel_id)
+                await channel.set_permissions(user, read_messages=True)
+                await channel.send(f"{user.mention} a rejoint la partie ! 🎮")
+
+# --- Détecte les messages avec "Fiche de Recherche de Partie" ---
+@bot.event
+async def on_message(message):
     if message.author.bot:
         return
-
-    # Vérifier si le message commence bien par "Fiche de Recherche de Partie"
-    if message.content.startswith("Fiche de Recherche de Partie"):
-        guild = message.guild
-
-        # Créer un salon privé
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            message.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
-
-        channel_name = f"partie-de-{message.author.name}".lower()
-        channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
-
-        await channel.send(f"{message.author.mention}, votre canal de partie est prêt ! 🎯\n"
-                           "Les joueurs pourront le rejoindre en réagissant avec 🎲 à ce message.")
-
-        # Ajouter une réaction pour que les autres puissent rejoindre
-        sent_message = await channel.send("Réagissez avec 🎲 pour rejoindre cette partie.")
-        await sent_message.add_reaction("🎲")
-
+    if "Fiche de Recherche de Partie" in message.content:
+        await create_game_channel(message)
     await bot.process_commands(message)
 
-# Gestion des réactions pour donner accès
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    if payload.emoji.name != "🎲":
-        return
+# --- Commande ping pour tester ---
+@bot.command()
+async def ping(ctx):
+    await ctx.send("Pong 🏓")
 
-    guild = bot.get_guild(payload.guild_id)
-    channel = guild.get_channel(payload.channel_id)
-    member = guild.get_member(payload.user_id)
-
-    if member is None or member.bot:
-        return
-
-    await channel.set_permissions(member, read_messages=True, send_messages=True)
-    await channel.send(f"{member.mention} a rejoint la partie 🎉")
-
-# Lancer le bot avec le token stocké dans Render
+# --- Lancer serveur + bot ---
+keep_alive()
 bot.run(os.environ['TOKEN'])
